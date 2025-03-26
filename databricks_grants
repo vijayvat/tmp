@@ -1,0 +1,19 @@
+metastore: Specifies the metastore by its ID.​
+catalog: Specifies the catalog by its name.​
+schema: Specifies the schema using the format catalog_name.schema_name.​
+table: Specifies the table using the format catalog_name.schema_name.table_name.​
+view: Specifies the view using the format catalog_name.schema_name.view_name.​
+volume: Specifies the volume using the format catalog_name.schema_name.volume_name.​
+function: Specifies the function using the format catalog_name.schema_name.function_name.​
+GitHub
++1
+GitHub
++1
+external_location: Specifies the external location by its name.​
+storage_credential: Specifies the storage credential by its name.​
+connection: Specifies the connection by its name.​
+share: Specifies the Delta Sharing share by its name.​
+recipient: Specifies the Delta Sharing recipient by its name.​
+provider: Specifies the Delta Sharing provider by its name.​
+clean_room: Specifies the clean room by its name.​
+service_credential: Specifies the service credential by its name.
