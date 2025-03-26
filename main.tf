@@ -31,12 +31,6 @@ variable "table" {
   default     = null
 }
 
-variable "view" {
-  description = "The view name in the format 'catalog.schema.view'"
-  type        = string
-  default     = null
-}
-
 variable "volume" {
   description = "The volume name in the format 'catalog.schema.volume'"
   type        = string
@@ -45,18 +39,6 @@ variable "volume" {
 
 variable "function" {
   description = "The function name in the format 'catalog.schema.function'"
-  type        = string
-  default     = null
-}
-
-variable "registered_model" {
-  description = "The name of the registered MLflow model"
-  type        = string
-  default     = null
-}
-
-variable "service_credential" {
-  description = "The service credential name"
   type        = string
   default     = null
 }
