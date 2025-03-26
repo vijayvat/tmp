@@ -1,5 +1,5 @@
 #variables.tf
-variable "grants_raw" {
+variable "grants" {
   description = "List of grants to apply to the securable"
   type = list(object({
     principal  = string
@@ -49,14 +49,26 @@ variable "function" {
   default     = null
 }
 
-variable "external_location" {
-  description = "The external location name"
+variable "registered_model" {
+  description = "The name of the registered MLflow model"
+  type        = string
+  default     = null
+}
+
+variable "service_credential" {
+  description = "The service credential name"
   type        = string
   default     = null
 }
 
 variable "storage_credential" {
   description = "The storage credential name"
+  type        = string
+  default     = null
+}
+
+variable "external_location" {
+  description = "The external location name"
   type        = string
   default     = null
 }
@@ -73,29 +85,6 @@ variable "share" {
   default     = null
 }
 
-variable "recipient" {
-  description = "The Delta Sharing recipient name"
-  type        = string
-  default     = null
-}
-
-variable "provider" {
-  description = "The Delta Sharing provider name"
-  type        = string
-  default     = null
-}
-
-variable "clean_room" {
-  description = "The clean room name"
-  type        = string
-  default     = null
-}
-
-variable "service_credential" {
-  description = "The service credential name"
-  type        = string
-  default     = null
-}
 
 
 #locals.tf
@@ -108,17 +97,12 @@ locals {
     var.catalog,
     var.schema,
     var.table,
-    var.view,
     var.volume,
     var.function,
-    var.external_location,
     var.storage_credential,
+    var.external_location,
     var.connection,
-    var.share,
-    var.recipient,
-    var.provider,
-    var.clean_room,
-    var.service_credential
+    var.share
   ])
 }
 
@@ -129,17 +113,12 @@ resource "databricks_grants" "this" {
   catalog            = var.catalog
   schema             = var.schema
   table              = var.table
-  view               = var.view
   volume             = var.volume
   function           = var.function
-  external_location  = var.external_location
   storage_credential = var.storage_credential
+  external_location  = var.external_location
   connection         = var.connection
   share              = var.share
-  recipient          = var.recipient
-  provider           = var.provider
-  clean_room         = var.clean_room
-  service_credential = var.service_credential
 
   dynamic "grant" {
     for_each = local.grants
