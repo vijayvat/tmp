@@ -127,3 +127,17 @@ resource "databricks_storage_credential" "this" {
   # Optional flag for GCP managed service account (email is output only)
   databricks_gcp_service_account = var.databricks_gcp_service_account
 }
+
+#---
+
+module "azure_storage_credential" {
+  source = "./modules/storage_credential"
+
+  name        = "azure-blob-managed-id"
+  read_only   = true  # default is already true, but set explicitly for clarity
+
+  azure_managed_identity = {
+    access_connector_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-rg/providers/Microsoft.Databricks/accessConnectors/my-connector"
+    managed_identity_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-identity"
+  }
+}
