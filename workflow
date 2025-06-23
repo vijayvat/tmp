@@ -1,84 +1,100 @@
-# JFrog Artifactory Token Management - Actual Requirements & APIs
+# .github/workflows/jfrog-token-rotation.yml
+name: JFrog Token Rotation
 
-## Token Types in JFrog
-Based on actual documentation:
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Every Monday at 2 AM UTC
+  workflow_dispatch:  # Manual trigger
 
-1. **Access Tokens** - Primary authentication method with expiration
-2. **Refresh Tokens** - **YES, they exist** but are optional and not commonly used
-3. **Reference Tokens** - 64-character alias to Access Tokens (shorter format)
-4. **Identity Tokens** - Different type, not for API access
+jobs:
+  rotate-jfrog-token:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check and rotate JFrog token
+      env:
+        JFROG_URL: ${{ secrets.JFROG_URL }}
+        JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+        JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+        CURRENT_TOKEN: ${{ secrets.JFROG_TOKEN }}
+        TOKEN_SCOPE: ${{ secrets.TOKEN_SCOPE || 'applied-permissions/user' }}
+      run: |
+        echo "Checking current token expiration..."
+        
+        # Check token expiration
+        token_info=$(curl -s -w "%{http_code}" \
+          -H "Authorization: Bearer $CURRENT_TOKEN" \
+          "$JFROG_URL/access/api/v1/tokens")
+        
+        http_code="${token_info: -3}"
+        response_body="${token_info%???}"
+        
+        if [ "$http_code" != "200" ]; then
+          echo "Token check failed (HTTP $http_code), proceeding with rotation"
+          NEEDS_ROTATION=true
+        else
+          expires_in=$(echo "$response_body" | jq -r '.expires_in // 0')
+          echo "Token expires in $expires_in seconds"
+          
+          # Rotate if expires within 7 days (604800 seconds)
+          if [ "$expires_in" -lt 604800 ]; then
+            echo "Token expires within 7 days, rotation needed"
+            NEEDS_ROTATION=true
+          else
+            echo "Token is valid for more than 7 days"
+            NEEDS_ROTATION=false
+          fi
+        fi
+        
+        if [ "$NEEDS_ROTATION" = "true" ]; then
+          echo "Creating new token..."
+          
+          # Create new token
+          new_token_response=$(curl -s \
+            -u "$JFROG_USERNAME:$JFROG_PASSWORD" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            "$JFROG_URL/access/api/v1/tokens" \
+            -d "{\"expires_in\": 2592000, \"scope\": \"$TOKEN_SCOPE\"}")
+          
+          new_token=$(echo "$new_token_response" | jq -r '.access_token // empty')
+          
+          if [ -z "$new_token" ]; then
+            echo "Failed to create new token"
+            echo "Response: $new_token_response"
+            exit 1
+          fi
+          
+          echo "New token created successfully"
+          echo "NEW_TOKEN=$new_token" >> $GITHUB_ENV
+        else
+          echo "No rotation needed"
+        fi
 
-## Available APIs (Confirmed)
+    - name: Update GitHub secret
+      if: env.NEW_TOKEN
+      uses: gliech/create-github-secret-action@v1
+      with:
+        name: JFROG_TOKEN
+        value: ${{ env.NEW_TOKEN }}
+        pa_token: ${{ secrets.GITHUB_TOKEN }}
 
-### Check Token Info
-- **Primary**: `GET {JFROG_URL}/access/api/v1/tokens` 
-- **Legacy**: `GET {JFROG_URL}/artifactory/api/security/token`
-- **Response includes**: `expires_in` (seconds until expiration)
-
-### Create New Token
-- **Primary**: `POST {JFROG_URL}/access/api/v1/tokens`
-- **Legacy**: `POST {JFROG_URL}/artifactory/api/security/token`
-- **Authentication**: Username + Password (not existing token)
-- **Body**: `{"expires_in": seconds, "scope": "applied-permissions/user"}`
-
-### Refresh Token (Optional)
-- **Endpoint**: `POST {JFROG_URL}/access/api/v1/tokens/refresh`
-- **Requirement**: Token must be created with `"refreshable": true`
-- **Note**: Most implementations don't use this approach
-
-## Implementation Steps
-
-### Step 1: Read Secrets from GitHub
-Required secrets:
-- `JFROG_URL` - Your JFrog instance URL
-- `JFROG_USERNAME` - Username for authentication  
-- `JFROG_PASSWORD` - Password or API key
-- `JFROG_TOKEN` - Current access token to check/rotate
-
-### Step 2: Check Token Expiration
-```bash
-# Call token info API
-curl -H "Authorization: Bearer $CURRENT_TOKEN" \
-  "$JFROG_URL/access/api/v1/tokens"
-
-# Extract expires_in from response
-# If expires_in < 604800 (7 days), proceed to rotation
-```
-
-### Step 3: Create New Token (if needed)
-```bash
-# Create new token using username/password
-curl -X POST \
-  -u "$JFROG_USERNAME:$JFROG_PASSWORD" \
-  -H "Content-Type: application/json" \
-  "$JFROG_URL/access/api/v1/tokens" \
-  -d '{"expires_in": 2592000, "scope": "applied-permissions/user"}'
-
-# Extract access_token from response
-```
-
-### Step 4: Update GitHub Secret
-- Use GitHub Actions to update `JFROG_TOKEN` secret with new token
-- Use marketplace action like `gliech/create-github-secret-action`
-
-### Step 5: Optional Cleanup
-- Revoke old token: `DELETE {JFROG_URL}/access/api/v1/tokens/{token_id}`
-
-## Scheduling
-- **Frequency**: Weekly (`0 2 * * 1` - Monday 2 AM UTC)
-- **Logic**: Only rotate if token expires within 7 days
-- **Manual trigger**: Available for testing
-
-## Key Findings
-- **Refresh tokens exist** but are rarely used in practice
-- **Two API versions** available (Access API is newer, Artifactory API is legacy)
-- **Username/password needed** for creating new tokens (not existing token)
-- **Token expiration info** is available via API
-- **JFrog CLI auto-refreshes** tokens every hour when using username/password
-
-## Requirements Summary
-1. JFrog instance with Access API enabled
-2. Username/password with token creation permissions
-3. GitHub repository secrets configured
-4. Weekly scheduled GitHub Action
-5. 7-day expiration buffer for safety
+    - name: Verify new token
+      if: env.NEW_TOKEN
+      env:
+        JFROG_URL: ${{ secrets.JFROG_URL }}
+      run: |
+        echo "Testing new token..."
+        
+        test_response=$(curl -s -w "%{http_code}" \
+          -H "Authorization: Bearer ${{ env.NEW_TOKEN }}" \
+          "$JFROG_URL/artifactory/api/system/ping")
+        
+        test_http_code="${test_response: -3}"
+        
+        if [ "$test_http_code" = "200" ]; then
+          echo "New token is working correctly"
+        else
+          echo "New token verification failed (HTTP $test_http_code)"
+          exit 1
+        fi
