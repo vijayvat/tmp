@@ -14,19 +14,19 @@ jobs:
     - name: Authenticate with Vault
       uses: hashicorp/vault-action@v3
       with:
-        url: ${{ secrets.VAULT_URL }}
+        url: ${{ vars.VAULT_URL }}
         method: approle
         roleId: ${{ secrets.VAULT_ROLE_ID }}
         secretId: ${{ secrets.VAULT_SECRET_ID }}
         secrets: |
-          ${{ secrets.VAULT_SECRET_PATH }} access_token | CURRENT_ACCESS_TOKEN;
-          ${{ secrets.VAULT_SECRET_PATH }} refresh_token | REFRESH_TOKEN;
-          ${{ secrets.VAULT_SECRET_PATH }} token_id | TOKEN_ID
+          ${{ vars.VAULT_SECRET_PATH }} access_token | CURRENT_ACCESS_TOKEN;
+          ${{ vars.VAULT_SECRET_PATH }} refresh_token | REFRESH_TOKEN;
+          ${{ vars.VAULT_SECRET_PATH }} token_id | TOKEN_ID
 
     - name: Check token expiration and refresh
       env:
-        JFROG_URL: ${{ secrets.JFROG_URL }}
-        VAULT_SECRET_PATH: ${{ secrets.VAULT_SECRET_PATH }}
+        JFROG_URL: ${{ vars.JFROG_URL }}
+        VAULT_SECRET_PATH: ${{ vars.VAULT_SECRET_PATH }}
       run: |
         echo "Checking token expiration using token ID: $TOKEN_ID"
         
@@ -99,12 +99,12 @@ jobs:
       if: env.TOKEN_REFRESHED == 'true'
       uses: hashicorp/vault-action@v3
       with:
-        url: ${{ secrets.VAULT_URL }}
+        url: ${{ vars.VAULT_URL }}
         method: approle
         roleId: ${{ secrets.VAULT_ROLE_ID }}
         secretId: ${{ secrets.VAULT_SECRET_ID }}
         secrets: |
-          ${{ secrets.VAULT_SECRET_PATH }} | VAULT_PATH
+          ${{ vars.VAULT_SECRET_PATH }} | VAULT_PATH
       env:
         VAULT_SECRET_PATH: ${{ secrets.VAULT_SECRET_PATH }}
       run: |
@@ -128,7 +128,7 @@ jobs:
     - name: Verify new token
       if: env.TOKEN_REFRESHED == 'true'
       env:
-        JFROG_URL: ${{ secrets.JFROG_URL }}
+        JFROG_URL: ${{ vars.JFROG_URL }}
       run: |
         echo "Testing new access token..."
         
@@ -157,7 +157,7 @@ jobs:
             body: `## JFrog Access Token Refreshed
             
             **Date:** ${new Date().toISOString()}
-            **Vault Path:** \`${{ secrets.VAULT_SECRET_PATH }}\`
+            **Vault Path:** \`${{ vars.VAULT_SECRET_PATH }}\`
             **Action:** Token has been refreshed and updated in HashiCorp Vault
             
             ### Next Steps
@@ -169,7 +169,7 @@ jobs:
             4. Test your integrations with the new token
             
             ### Token Details
-            - **Vault Path:** \`${{ secrets.VAULT_SECRET_PATH }}\`
+            - **Vault Path:** \`${{ vars.VAULT_SECRET_PATH }}\`
             - **Updated By:** GitHub Actions workflow
             - **Workflow Run:** [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
@@ -195,7 +195,7 @@ jobs:
             body: `## JFrog Token Has Expired
             
             **Date:** ${new Date().toISOString()}
-            **Vault Path:** \`${{ secrets.VAULT_SECRET_PATH }}\`
+            **Vault Path:** \`${{ vars.VAULT_SECRET_PATH }}\`
             **Status:** TOKEN EXPIRED - MANUAL ACTION REQUIRED
             
             ### Issue
@@ -204,7 +204,7 @@ jobs:
             ### Action Required
             1. **Contact admin team** to generate a new refreshable token pair
             2. **Ensure new token is created with:** \`"refreshable": true\`
-            3. **Update Vault** at path: \`${{ secrets.VAULT_SECRET_PATH }}\` with:
+            3. **Update Vault** at path: \`${{ vars.VAULT_SECRET_PATH }}\` with:
                - \`access_token\`: new access token
                - \`refresh_token\`: new refresh token
                - \`token_id\`: new token ID
@@ -245,7 +245,7 @@ jobs:
             body: `## JFrog Token Refresh Failed
             
             **Date:** ${new Date().toISOString()}
-            **Vault Path:** \`${{ secrets.VAULT_SECRET_PATH }}\`
+            **Vault Path:** \`${{ vars.VAULT_SECRET_PATH }}\`
             **Status:** FAILED
             
             ### Action Required
@@ -257,7 +257,7 @@ jobs:
             
             ### Manual Steps Required
             1. Contact the admin team to generate a new refreshable token
-            2. Update the token in Vault at path: \`${{ secrets.VAULT_SECRET_PATH }}\`
+            2. Update the token in Vault at path: \`${{ vars.VAULT_SECRET_PATH }}\`
             3. Ensure the new token is created with \`refreshable: true\`
             
             ### Workflow Details
@@ -271,3 +271,77 @@ jobs:
           });
           
           console.log(`Created failure issue #${issue.data.number}`);
+
+
+
+JFrog Token Refresh Workflow Summary
+Prerequisites
+
+AppRole credentials (role_id + secret_id) must be stored in GitHub secrets beforehand
+Initial refreshable token pair (access_token, refresh_token, token_id) must be created by admin team and stored in Vault
+
+Trigger
+
+Runs every Monday at 2 AM UTC (scheduled)
+Can be triggered manually via GitHub Actions
+
+Step 1: Authenticate with Vault
+
+Uses GitHub marketplace action: hashicorp/vault-action@v3
+Uses AppRole authentication (role_id + secret_id from GitHub secrets)
+Retrieves from Vault:
+
+Current access token
+Current refresh token
+Current token ID
+
+
+
+Step 2: Check Token Expiration
+
+Calls JFrog API: GET /access/api/v1/tokens/{token_id}
+Extracts expiry field from response
+Compares expiry time vs current time
+If token expires within 7 days → proceed to refresh
+If token already invalid (non-200) → manual action required
+
+Step 3: Refresh Token (if needed)
+
+Calls JFrog API: POST /access/api/v1/tokens/refresh
+Uses refresh token for authentication
+Gets new token pair: access_token, refresh_token, token_id
+
+Step 4: Update Vault
+
+Uses GitHub marketplace action: hashicorp/vault-action@v3
+Stores new tokens in Vault at original path
+Includes metadata: last_updated, updated_by
+
+Step 5: Verify New Token
+
+Tests new access token with JFrog ping API
+Ensures token works before finishing
+
+Step 6: Create GitHub Issues
+
+Uses GitHub marketplace action: actions/github-script@v7
+Success: "Token refreshed, update dependencies" → assigns team
+Expired: "Token expired, manual action required" → assigns team
+Refresh Failed: "Refresh failed, contact admin" → assigns team
+
+Required vars/secrets needed in GitHub for actions to work:
+
+Key GitHub Secrets Required (Sensitive)
+
+VAULT_ROLE_ID - AppRole role ID for Vault authentication
+VAULT_SECRET_ID - AppRole secret ID for Vault authentication
+GITHUB_ISSUE_ASSIGNEES - List of users to assign to issues
+
+Key GitHub Variables Required (Non-sensitive)
+
+VAULT_URL - Vault server URL
+VAULT_SECRET_PATH - Path in Vault where tokens are stored
+JFROG_URL - JFrog Artifactory URL
+
+
+
