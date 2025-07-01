@@ -1,1 +1,15 @@
-condition = var.azure_attributes == null || try(var.azure_attributes.first_on_demand, null) == null || try(var.azure_attributes.first_on_demand > 0, false)
+quicksight:CreateDataSource
+quicksight:UpdateDataSource
+quicksight:DeleteDataSource
+quicksight:DescribeDataSource
+quicksight:CreateDataSet
+quicksight:UpdateDataSet
+quicksight:DeleteDataSet
+quicksight:DescribeDataSet
+quicksight:UpdateDataSetPermissions
+quicksight:DescribeDataSetPermissions
+quicksight:PassDataSet
+quicksight:CreateIngestion
+quicksight:DescribeIngestion
+quicksight:ListDataSources
+quicksight:ListDataSets
