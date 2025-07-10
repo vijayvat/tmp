@@ -1,15 +1,1 @@
-quicksight:CreateDataSource
-quicksight:UpdateDataSource
-quicksight:DeleteDataSource
-quicksight:DescribeDataSource
-quicksight:CreateDataSet
-quicksight:UpdateDataSet
-quicksight:DeleteDataSet
-quicksight:DescribeDataSet
-quicksight:UpdateDataSetPermissions
-quicksight:DescribeDataSetPermissions
-quicksight:PassDataSet
-quicksight:CreateIngestion
-quicksight:DescribeIngestion
-quicksight:ListDataSources
-quicksight:ListDataSets
+  firewall_rules = var.delegate_subnet_id != null && var.delegate_subnet_id != "" ? [] : concat(local.tfe_firewall.tfe_servers, local.default_fw_rules, var.firewall_rules)
