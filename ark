@@ -1,41 +1,38 @@
-# Actions Runner Controller (ARC) Implementation
+# Actions Runner Controller (ARC) - Single ApplicationSet Implementation
 
 ## Key Facts:
-- ✅ **NO cert-manager required** for the new ARC implementation
-- ✅ **Two components needed**: controller + runner scale set
-- ✅ **Follows your existing pattern**: ApplicationSets in `infra/templates/`, Helm charts in root directories
+- ✅ **Single ApplicationSet** - One deployment for both ARC components
+- ✅ **Umbrella Chart approach** - One Helm chart with both controller and runner scale set
+- ✅ **Easy to maintain** - Single configuration, single deployment
+- ✅ **Logical grouping** - Interdependent components deployed together
 
 ## Repository Structure
 ```
 ├── infra/
 │   └── templates/
-│       ├── arc-controller.yaml          # ArgoCD ApplicationSet (NEW)
-│       └── arc-runner-set.yaml          # ArgoCD ApplicationSet (NEW)
-├── arc-controller/                      # Helm chart directory (NEW)
-│   ├── Chart.yaml                       # References official controller chart
-│   ├── values.yaml
+│       └── arc.yaml                     # Single ArgoCD ApplicationSet (NEW)
+├── arc/                                 # Umbrella Helm chart directory (NEW)
+│   ├── Chart.yaml                       # References both official ARC charts
+│   ├── values.yaml                      # Combined configuration
 │   └── templates/
-│       └── external-secret.yaml
-├── arc-runner-set/                     # Helm chart directory (NEW)
-│   ├── Chart.yaml                       # References official runner scale set chart
-│   ├── values.yaml
-│   └── templates/
-│       └── external-secret.yaml
+│       └── external-secret.yaml        # GitHub token secret
 ├── casissuer/                          # Existing example
 ├── cert-manager/                       # Existing example
 └── cluster-config/                     # Existing
     └── **/config.json
 ```
 
-## 1. ApplicationSet for ARC Controller
+## Files to Create
 
-**File: `infra/templates/arc-controller.yaml`**
+### 1. Single ApplicationSet
+
+**File: `infra/templates/arc.yaml`**
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: arc-controller
+  name: arc
   namespace: argocd
 spec:
   generators:
@@ -46,20 +43,19 @@ spec:
         - path: "cluster-config/**/config.json"
   template:
     metadata:
-      name: '{{ "{{" }} cluster_id {{ "}}" }}-arc-controller'
-      annotations:
-        argocd.argoproj.io/sync-wave: "0"  # Deploy first
+      name: '{{ "{{" }} cluster_id {{ "}}" }}-arc'
     spec:
       project: infra
       source: 
         repoURL: {{ .Values.spec.source.repoURL }}
         targetRevision: {{ .Values.spec.source.targetRevision }}
-        path: arc-controller
+        path: arc
         helm:
           values: |
             project_id: '{{ "{{" }} project_id {{ "}}" }}'
             region: '{{ "{{" }} region {{ "}}" }}'
             cluster_id: '{{ "{{" }} cluster_id {{ "}}" }}'
+            githubConfigUrl: "https://github.com/YOUR_ORG_OR_REPO"  # Update this
       destination:
         server: '{{ "{{" }} server {{ "}}" }}'
         namespace: arc-systems
@@ -71,60 +67,14 @@ spec:
           - CreateNamespace=true
 ```
 
-## 2. ApplicationSet for ARC Runner Scale Set
+### 2. Umbrella Helm Chart
 
-**File: `infra/templates/arc-runner-set.yaml`**
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: arc-runner-set
-  namespace: argocd
-spec:
-  generators:
-    - git:
-        repoURL: {{ .Values.spec.source.repoURL }}
-        revision: {{ .Values.spec.source.targetRevision }}
-        files:
-        - path: "cluster-config/**/config.json"
-  template:
-    metadata:
-      name: '{{ "{{" }} cluster_id {{ "}}" }}-arc-runner-set'
-    spec:
-      project: infra
-      source: 
-        repoURL: {{ .Values.spec.source.repoURL }}
-        targetRevision: {{ .Values.spec.source.targetRevision }}
-        path: arc-runner-set
-        helm:
-          values: |
-            project_id: '{{ "{{" }} project_id {{ "}}" }}'
-            region: '{{ "{{" }} region {{ "}}" }}'
-            cluster_id: '{{ "{{" }} cluster_id {{ "}}" }}'
-            githubConfigUrl: "https://github.com/YOUR_ORG_OR_REPO"  # Update this
-      destination:
-        server: '{{ "{{" }} server {{ "}}" }}'
-        namespace: arc-runners
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-          - CreateNamespace=true
-      # Note: ArgoCD ApplicationSets don't have depends, but you can use sync waves
-      annotations:
-        argocd.argoproj.io/sync-wave: "1"  # Deploy after controller (wave 0)
-```
-
-## 3. ARC Controller Helm Chart
-
-**File: `arc-controller/Chart.yaml`**
+**File: `arc/Chart.yaml`**
 
 ```yaml
 apiVersion: v2
-name: arc-controller
-description: GitHub Actions Runner Controller
+name: arc
+description: GitHub Actions Runner Controller - Complete Deployment
 type: application
 version: 0.1.0
 appVersion: "0.12.1"
@@ -132,17 +82,31 @@ dependencies:
   - name: gha-runner-scale-set-controller
     version: "0.12.1"
     repository: "oci://ghcr.io/actions/actions-runner-controller-charts"
+    condition: controller.enabled
+  - name: gha-runner-scale-set
+    version: "0.12.1"
+    repository: "oci://ghcr.io/actions/actions-runner-controller-charts"
+    condition: runnerSet.enabled
+    alias: runners
 ```
 
-**File: `arc-controller/values.yaml`**
+**File: `arc/values.yaml`**
 
 ```yaml
-# Default values for arc-controller
+# Global values
 project_id: ""
 region: ""
 cluster_id: ""
+githubConfigUrl: ""  # Set by ApplicationSet
 
-# External secret for GitHub token
+# Component toggles (useful for testing)
+controller:
+  enabled: true
+
+runnerSet:
+  enabled: true
+
+# External secret configuration
 externalSecret:
   enabled: true
   secretName: "arc-github-token"
@@ -150,8 +114,9 @@ externalSecret:
     name: "gcp-project-cluster-store"
     kind: "ClusterSecretStore"
   remoteRef:
-    key: "arc-github-token"  # Update with your secret path in GCP Secret Manager
+    key: "arc-github-token"  # Update with your GCP Secret Manager path
 
+# Controller configuration
 gha-runner-scale-set-controller:
   replicaCount: 1
   
@@ -173,93 +138,22 @@ gha-runner-scale-set-controller:
       memory: 512Mi
     requests:
       cpu: 100m
-      memory: 64Mi
+      memory: 128Mi
   
   # Security context
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
     fsGroup: 1000
-  
-  # Node selector for GKE
-  nodeSelector: {}
-  
-  # Tolerations for GKE nodes
-  tolerations: []
-  
-  # Affinity rules
-  affinity: {}
-```
 
-**File: `arc-controller/templates/external-secret.yaml`**
-
-```yaml
-{{- if .Values.externalSecret.enabled }}
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: {{ .Values.externalSecret.secretName }}
-  namespace: {{ .Release.Namespace }}
-spec:
-  secretStoreRef:
-    kind: {{ .Values.externalSecret.secretStoreRef.kind }}
-    name: {{ .Values.externalSecret.secretStoreRef.name }}
-  refreshInterval: 1h
-  target:
-    creationPolicy: Owner
-    deletionPolicy: Retain
-    name: {{ .Values.externalSecret.secretName }}
-  data:
-    - secretKey: github_token
-      remoteRef:
-        key: {{ .Values.externalSecret.remoteRef.key }}
-{{- end }}
-```
-
-## 4. ARC Runner Scale Set Helm Chart
-
-**File: `arc-runner-set/Chart.yaml`**
-
-```yaml
-apiVersion: v2
-name: arc-runner-set
-description: GitHub Actions Runner Scale Set
-type: application
-version: 0.1.0
-appVersion: "0.12.1"
-dependencies:
-  - name: gha-runner-scale-set
-    version: "0.12.1"
-    repository: "oci://ghcr.io/actions/actions-runner-controller-charts"
-```
-
-**File: `arc-runner-set/values.yaml`**
-
-```yaml
-# Default values for arc-runner-set
-project_id: ""
-region: ""
-cluster_id: ""
-githubConfigUrl: ""  # Will be set by ApplicationSet
-
-# Runner scale set configuration
-runnerScaleSetName: "default-runners"
-
-gha-runner-scale-set:
-  # GitHub configuration
-  githubConfigUrl: ""  # Set by ApplicationSet
-  
+# Runner Scale Set configuration
+runners:
   # Use external secret for GitHub token
   githubConfigSecret:
     github_token: ""  # Will be populated from external secret
   
   # Reference to external secret
   existingSecret: "arc-github-token"
-  
-  # Controller service account reference
-  controllerServiceAccount:
-    namespace: arc-systems
-    name: gha-runner-scale-set-controller
   
   # Scaling configuration
   minRunners: 0
@@ -287,12 +181,6 @@ gha-runner-scale-set:
             - name: RUNNER_FEATURE_FLAG_EPHEMERAL
               value: "true"
       
-      # Node selector for GKE
-      nodeSelector: {}
-      
-      # Tolerations
-      tolerations: []
-      
       # Security context for pod
       securityContext:
         runAsNonRoot: true
@@ -319,73 +207,44 @@ gha-runner-scale-set:
               memory: "128Mi"
 ```
 
-## 5. Prerequisites
+**File: `arc/templates/external-secret.yaml`**
 
-### GitHub Token Setup
-You need a GitHub Personal Access Token (PAT) or GitHub App with these permissions:
-- **For Organization runners**: `admin:org` scope
-- **For Repository runners**: `repo` scope
-- **For Enterprise runners**: `admin:enterprise` scope
-
-### GCP Secret Manager
-Store your GitHub token in GCP Secret Manager:
-```bash
-gcloud secrets create arc-github-token --data-file=token.txt
-```
-
-### External Secrets Operator
-Ensure External Secrets Operator is installed in your cluster and ClusterSecretStore is configured.
-
-## 6. Deployment Steps
-
-1. **Create the Helm charts** in your repo following the structure above
-2. **Update the GitHub config URL** in the ApplicationSet templates
-3. **Store GitHub token** in GCP Secret Manager
-4. **Update cluster configs** if needed to specify which clusters should have ARC
-5. **Create PR** with all the changes
-6. **Monitor deployment** through ArgoCD UI
-
-## 7. Verification
-
-After deployment, verify with:
-```bash
-# Check controller
-kubectl get pods -n arc-systems
-
-# Check runners
-kubectl get pods -n arc-runners
-
-# Check runner scale sets
-kubectl get runnerscalesets -A
-
-# Check external secrets
-kubectl get externalsecrets -A
-```
-
-## 8. Usage in GitHub Workflows
-
-Once deployed, use in your workflows:
 ```yaml
-name: CI
-on: [push]
-jobs:
-  build:
-    runs-on: [self-hosted, linux, x64, YOUR_CLUSTER_ID-default-runners]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: echo "Building on self-hosted runner!"
+{{- if .Values.externalSecret.enabled }}
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: {{ .Values.externalSecret.secretName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretStoreRef:
+    kind: {{ .Values.externalSecret.secretStoreRef.kind }}
+    name: {{ .Values.externalSecret.secretStoreRef.name }}
+  refreshInterval: 1h
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: {{ .Values.externalSecret.secretName }}
+  data:
+    - secretKey: github_token
+      remoteRef:
+        key: {{ .Values.externalSecret.remoteRef.key }}
+{{- end }}
 ```
 
-## 9. Monitoring and Scaling
+## Summary
 
-- ARC automatically scales runners based on queued jobs
-- Monitor through kubectl or set up Prometheus/Grafana
-- Adjust `minRunners` and `maxRunners` based on your workload
+This implementation creates:
 
-## 10. Security Considerations
+1. **ONE ApplicationSet** (`infra/templates/arc.yaml`)
+2. **ONE Helm chart directory** (`arc/`)  
+3. **Umbrella chart** that deploys both ARC components together
 
-- Runners are ephemeral and destroyed after each job
-- Use least-privilege GitHub tokens
-- Consider using GitHub Apps instead of PATs for better security
-- Review runner images for security hardening
+No separate controller or runner ApplicationSets. Everything is unified into a single deployment.
+
+## Next Steps
+
+1. Update `githubConfigUrl` in the ApplicationSet
+2. Store GitHub token in GCP Secret Manager
+3. Create these 4 files in your repo
+4. Create PR and deploy!
