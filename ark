@@ -143,10 +143,8 @@ gha-runner-scale-set-controller:
     runAsNonRoot: true
     runAsUser: 1000
     fsGroup: 1000
-    seccompProfile:
-      type: RuntimeDefault
   
-  # High availability
+  # High availability - spread controller pods across nodes
   affinity:
     podAntiAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -192,8 +190,6 @@ runners:
         runAsNonRoot: true
         runAsUser: 1001
         fsGroup: 121
-        seccompProfile:
-          type: RuntimeDefault
       
       containers:
         - name: runner
@@ -243,15 +239,7 @@ runners:
             sizeLimit: "2Gi"
       
       # Node selection preferences
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            preference:
-              matchExpressions:
-              - key: cloud.google.com/gke-nodepool
-                operator: In
-                values: ["default-pool"]
+      nodeSelector: {}
       
       # Graceful termination
       terminationGracePeriodSeconds: 300
