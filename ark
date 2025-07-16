@@ -105,15 +105,20 @@ controller:
 runnerSet:
   enabled: true
 
+# ClusterSecretStore configuration
+clusterSecretStore:
+  create: true                        # Set to false if ClusterSecretStore already exists
+  name: "devopstools-secret-store"    # Name for the new ClusterSecretStore
+
 # External secret configuration
 externalSecret:
   enabled: true
   secretName: "arc-github-token"
   secretStoreRef:
-    name: "gcp-project-cluster-store"
+    name: "devopstools-secret-store"  # References the ClusterSecretStore created above
     kind: "ClusterSecretStore"
   remoteRef:
-    key: "arc-github-token"  # Update with your GCP Secret Manager path
+    key: "arc-github-token"           # Must match the secret name in GCP Secret Manager
 
 # Controller configuration
 gha-runner-scale-set-controller:
@@ -163,7 +168,11 @@ runners:
   # Use cluster-specific naming
   runnerScaleSetName: "enterprise-runners"
   
-  # Reference external secret for GitHub token
+  # Reference the Kubernetes secret created by ExternalSecret
+  githubConfigSecret:
+    github_token: ""  # Will be populated from the secret
+  
+  # Reference to the secret created by ExternalSecret
   existingSecret: "arc-github-token"
   
   # Enterprise scaling configuration
@@ -284,6 +293,26 @@ runners:
             sizeLimit: "100Mi"
 ```
 
+**File: `arc/templates/cluster-secret-store.yaml`**
+
+```yaml
+{{- if .Values.clusterSecretStore.create }}
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: {{ .Values.clusterSecretStore.name }}
+spec:
+  provider:
+    gcpsm:
+      projectId: "{{ .Values.project_id }}"
+      auth:
+        workloadIdentity:
+          clusterLocation: "{{ .Values.region }}"
+          clusterName: "{{ .Values.cluster_id }}"
+          serviceAccountRef:
+            name: "external-secrets-sa"
+{{- end }}
+
 **File: `arc/templates/external-secret.yaml`**
 
 ```yaml
@@ -303,7 +332,7 @@ spec:
     deletionPolicy: Retain
     name: {{ .Values.externalSecret.secretName }}
   data:
-    - secretKey: github_token
+    - secretKey: github_token      # ARC expects this key name
       remoteRef:
         key: {{ .Values.externalSecret.remoteRef.key }}
 {{- end }}
