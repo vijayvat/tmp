@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-gha-runner-scale-set-controller-gha-rs-controller-manager-role
+  labels:
+    {{- include "actions-runner-controller-umbrella.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+    - rbac.authorization.k8s.io
+    resources:
+    - rolebindings
+    verbs:
+    - create
+    - list 
+    - watch
