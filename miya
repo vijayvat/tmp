@@ -1,24 +1,87 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ .Release.Name }}-rbac-rolebindings-create
-rules:
-  - apiGroups:
-    - rbac.authorization.k8s.io
-    resources:
-    - rolebindings
-    verbs:
-    - create
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ .Release.Name }}-rbac-rolebindings-create
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ .Release.Name }}-rbac-rolebindings-create
-subjects:
-  - kind: ServiceAccount
-    name: arc-controller-gha-rs-controller
-    namespace: {{ .Release.Namespace }}
+gha-runner-scale-set:
+  githubConfigUrl: "https://github.com/dexcomit"
+  githubConfigSecret: "arc-github-credentials"
+  maxRunners: 5
+  minRunners: 1
+  runnerScaleSetName: "gh-arc-runner"
+  
+  # DO NOT use containerMode for rootless - remove it completely
+  
+  template:
+    spec:
+      initContainers:
+        - name: init-dind-externals
+          image: ghcr.io/actions/actions-runner:latest
+          command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+          volumeMounts:
+            - name: dind-externals
+              mountPath: /home/runner/tmpDir
+        - name: init-dind-rootless
+          image: docker:dind-rootless
+          command:
+            - sh
+            - -c
+            - |
+              set -x
+              cp -a /etc/. /dind-etc/
+              echo 'runner:x:1001:1001:runner:/home/runner:/bin/ash' >> /dind-etc/passwd
+              echo 'runner:x:1001:' >> /dind-etc/group
+              echo 'runner:100000:65536' >> /dind-etc/subgid
+              echo 'runner:100000:65536' >> /dind-etc/subuid
+              chmod 755 /dind-etc;
+              chmod u=rwx,g=rx+s,o=rx /dind-home
+              chown 1001:1001 /dind-home
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /dind-etc
+              name: dind-etc
+            - mountPath: /dind-home
+              name: dind-home
+      containers:
+        - name: runner
+          image: ghcr.io/actions/actions-runner:2.327.1
+          command: ["/home/runner/run.sh"]
+          env:
+            - name: DOCKER_HOST
+              value: unix:///run/user/1001/docker.sock
+          securityContext:
+            privileged: true
+            runAsUser: 1001
+            runAsGroup: 1001
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/_work
+            - name: dind-sock
+              mountPath: /run/user/1001
+        - name: dind
+          image: docker:dind-rootless
+          args:
+            - dockerd
+            - --host=unix:///run/user/1001/docker.sock
+          securityContext:
+            privileged: true
+            runAsUser: 1001
+            runAsGroup: 1001
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/_work
+            - name: dind-sock
+              mountPath: /run/user/1001
+            - name: dind-externals
+              mountPath: /home/runner/externals
+            - name: dind-etc
+              mountPath: /etc
+            - name: dind-home
+              mountPath: /home/runner
+      volumes:
+        - name: work
+          emptyDir: {}
+        - name: dind-externals
+          emptyDir: {}
+        - name: dind-sock
+          emptyDir: {}
+        - name: dind-etc
+          emptyDir: {}
+        - name: dind-home
+          emptyDir: {}
