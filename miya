@@ -1,9 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Release.Name }}-gha-runner-scale-set-controller-gha-rs-controller-manager-role
-  labels:
-    {{- include "actions-runner-controller-umbrella.labels" . | nindent 4 }}
+  name: {{ .Release.Name }}-rbac-rolebindings-create
 rules:
   - apiGroups:
     - rbac.authorization.k8s.io
@@ -11,5 +9,16 @@ rules:
     - rolebindings
     verbs:
     - create
-    - list 
-    - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-rbac-rolebindings-create
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-rbac-rolebindings-create
+subjects:
+  - kind: ServiceAccount
+    name: arc-controller-gha-rs-controller
+    namespace: {{ .Release.Namespace }}
