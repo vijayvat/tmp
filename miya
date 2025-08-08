@@ -1,14 +1,6 @@
 lifecycle {
   precondition {
-    condition = (
-      # Azure native services (*.azure.com)
-      can(regex("https://.*\\.azure\\.com/([^/]+)/.*", each.value.issuer)) && 
-      contains(local.allowed_tenant_ids, regex("https://.*\\.azure\\.com/([^/]+)/.*", each.value.issuer)[0])
-    ) || (
-      # Azure DevOps issuers - validate org ID
-      can(regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)) &&
-      contains(local.allowed_azdo_org_ids, regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)[0])
-    )
+    condition = (can(regex("https://.*\\.azure\\.com/([^/]+)/.*", each.value.issuer)) && contains(local.allowed_tenant_ids, regex("https://.*\\.azure\\.com/([^/]+)/.*", each.value.issuer)[0])) || (can(regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)) && contains(local.allowed_azdo_org_ids, regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)[0]))
     
     error_message = "Issuer URL provided for credential named '${each.value.name}' is invalid/not allowed. Allowed patterns: 'https://*.azure.com/<allowed-tenant-id>/*' or 'https://vstoken.dev.azure.com/<allowed-org-id>'"
   }
