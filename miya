@@ -5,3 +5,26 @@ lifecycle {
     error_message = "Issuer URL provided for credential named '${each.value.name}' is invalid/not allowed. Allowed patterns: 'https://*.azure.com/<allowed-tenant-id>/*' or 'https://vstoken.dev.azure.com/<allowed-org-id>'"
   }
 }
+
+
+Security Review: Add Azure DevOps Support to Federated Identity Module
+Request
+User wants to enable Azure DevOps workload identity federation in addition to current Azure services (*.azure.com).
+Current State
+
+Only allows https://*.azure.com/<tenant-id>/* issuers
+Validates against approved tenant ID whitelist
+
+Proposed Change
+
+Add support for https://vstoken.dev.azure.com/<org-guid> issuers
+Create new whitelist of approved Azure DevOps organization GUIDs
+Extend validation condition with OR logic
+
+Security
+
+Maintains whitelist approach
+Only allows pre-approved Azure DevOps organizations
+No change to existing Azure native service validation
+
+Request approval to proceed with this change.
