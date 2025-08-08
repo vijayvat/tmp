@@ -1,6 +1,6 @@
 lifecycle {
  precondition {
-   condition = (can(regex("https://*\\.azure\\.com/([^/]+)/*.*", each.value.issuer)) ? contains(local.allowed_tenant_ids, regex("https://*\\.azure\\.com/([^/]+)/*.*", each.value.issuer)[0]) : false) || (can(regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)) ? contains(local.allowed_azdo_org_ids, regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)[0]) : false)
+   condition = (can(regex("https://.*\\.azure\\.com/([^/]+)", each.value.issuer)) ? contains(local.allowed_tenant_ids, regex("https://.*\\.azure\\.com/([^/]+)", each.value.issuer)[0]) : false) || (can(regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)) ? contains(local.allowed_azdo_org_ids, regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)[0]) : false)
    
    error_message = "Issuer URL provided for credential named '${each.value.name}' is invalid/not allowed. Please ensure URL follows the pattern: 'https://*.azure.com/<An allowed tenant ID>/*.' or 'https://vstoken.dev.azure.com/<An allowed org ID>'"
  }
