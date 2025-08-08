@@ -1,87 +1,15 @@
-gha-runner-scale-set:
-  githubConfigUrl: "https://github.com/dexcomit"
-  githubConfigSecret: "arc-github-credentials"
-  maxRunners: 5
-  minRunners: 1
-  runnerScaleSetName: "gh-arc-runner"
-  
-  # DO NOT use containerMode for rootless - remove it completely
-  
-  template:
-    spec:
-      initContainers:
-        - name: init-dind-externals
-          image: ghcr.io/actions/actions-runner:latest
-          command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
-          volumeMounts:
-            - name: dind-externals
-              mountPath: /home/runner/tmpDir
-        - name: init-dind-rootless
-          image: docker:dind-rootless
-          command:
-            - sh
-            - -c
-            - |
-              set -x
-              cp -a /etc/. /dind-etc/
-              echo 'runner:x:1001:1001:runner:/home/runner:/bin/ash' >> /dind-etc/passwd
-              echo 'runner:x:1001:' >> /dind-etc/group
-              echo 'runner:100000:65536' >> /dind-etc/subgid
-              echo 'runner:100000:65536' >> /dind-etc/subuid
-              chmod 755 /dind-etc;
-              chmod u=rwx,g=rx+s,o=rx /dind-home
-              chown 1001:1001 /dind-home
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - mountPath: /dind-etc
-              name: dind-etc
-            - mountPath: /dind-home
-              name: dind-home
-      containers:
-        - name: runner
-          image: ghcr.io/actions/actions-runner:2.327.1
-          command: ["/home/runner/run.sh"]
-          env:
-            - name: DOCKER_HOST
-              value: unix:///run/user/1001/docker.sock
-          securityContext:
-            privileged: true
-            runAsUser: 1001
-            runAsGroup: 1001
-          volumeMounts:
-            - name: work
-              mountPath: /home/runner/_work
-            - name: dind-sock
-              mountPath: /run/user/1001
-        - name: dind
-          image: docker:dind-rootless
-          args:
-            - dockerd
-            - --host=unix:///run/user/1001/docker.sock
-          securityContext:
-            privileged: true
-            runAsUser: 1001
-            runAsGroup: 1001
-          volumeMounts:
-            - name: work
-              mountPath: /home/runner/_work
-            - name: dind-sock
-              mountPath: /run/user/1001
-            - name: dind-externals
-              mountPath: /home/runner/externals
-            - name: dind-etc
-              mountPath: /etc
-            - name: dind-home
-              mountPath: /home/runner
-      volumes:
-        - name: work
-          emptyDir: {}
-        - name: dind-externals
-          emptyDir: {}
-        - name: dind-sock
-          emptyDir: {}
-        - name: dind-etc
-          emptyDir: {}
-        - name: dind-home
-          emptyDir: {}
+lifecycle {
+  precondition {
+    condition = (
+      # Azure native services (*.azure.com)
+      can(regex("https://.*\\.azure\\.com/([^/]+)/.*", each.value.issuer)) && 
+      contains(local.allowed_tenant_ids, regex("https://.*\\.azure\\.com/([^/]+)/.*", each.value.issuer)[0])
+    ) || (
+      # Azure DevOps issuers - validate org ID
+      can(regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)) &&
+      contains(local.allowed_azdo_org_ids, regex("https://vstoken\\.dev\\.azure\\.com/([^/]+)", each.value.issuer)[0])
+    )
+    
+    error_message = "Issuer URL provided for credential named '${each.value.name}' is invalid/not allowed. Allowed patterns: 'https://*.azure.com/<allowed-tenant-id>/*' or 'https://vstoken.dev.azure.com/<allowed-org-id>'"
+  }
+}
