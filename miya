@@ -5,3 +5,8 @@ lifecycle {
    error_message = "Issuer URL provided for credential named '${each.value.name}' is invalid/not allowed. Please ensure URL follows the pattern: 'https://*.azure.com/<An allowed tenant ID>/*.' or 'https://vstoken.dev.azure.com/<An allowed org ID>'"
  }
 }
+
+curl -X GET \
+  -H "Authorization: Basic :YOUR_ADO_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://dev.azure.com/YOUR_ORG_NAME/_apis/connectionData?api-version=7.1"
