@@ -10,3 +10,4 @@ curl -X GET \
   -H "Authorization: Basic :YOUR_ADO_TOKEN" \
   -H "Content-Type: application/json" \
   "https://dev.azure.com/YOUR_ORG_NAME/_apis/connectionData?api-version=7.1"
+  allowed_azdo_org_ids = ["12345678-9abc-def0-1234-56789abcdef0"]
